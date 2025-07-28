@@ -1,6 +1,8 @@
-import requests
 import time
 import os
+import requests
+import tweepy
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,117 +10,124 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
+TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
+
 COINGECKO_API = "https://api.coingecko.com/api/v3/coins/markets"
 
-HEADERS = {
-    "accept": "application/json"
-}
+MEME_KEYWORDS = ["doge", "shiba", "moon", "elon", "pepe", "meme"]
 
-MEME_KEYWORDS = ["doge", "shiba", "moon", "elon", "pepe", "memecoin", "meme"]
+analyzer = SentimentIntensityAnalyzer()
+
+auth = tweepy.OAuth1UserHandler(TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+twitter_api = tweepy.API(auth)
 
 enviados = set()
 
-def enviar_mensaje(texto):
+def enviar_alerta_telegram(mensaje):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": texto,
+        "text": mensaje,
         "parse_mode": "Markdown"
     }
     response = requests.post(url, data=data)
     return response.ok
 
-def filtrar_y_analizar(data):
-    oportunidades = []
+def obtener_memecoins():
+    params = {
+        "vs_currency": "usd",
+        "order": "volume_desc",
+        "per_page": 100,
+        "page": 1,
+        "price_change_percentage": "1h,24h"
+    }
+    r = requests.get(COINGECKO_API, params=params)
+    if r.status_code != 200:
+        print(f"Error CoinGecko API: {r.status_code}")
+        return []
+    data = r.json()
+    memecoins = []
     for coin in data:
-        name = coin.get("name", "")
-        symbol = coin.get("symbol", "").upper()
-        price = coin.get("current_price", 0)
-        market_cap = coin.get("market_cap", 0)
-        volume = coin.get("total_volume", 0)
-        id_ = coin.get("id", "")
-        change_1h = coin.get("price_change_percentage_1h_in_currency") or 0
-        change_24h = coin.get("price_change_percentage_24h") or 0
+        name = coin.get("name", "").lower()
+        if any(k in name for k in MEME_KEYWORDS):
+            memecoins.append(coin)
+    return memecoins
 
-        # Filtro de palabras clave (memecoin o trashcoin)
-        if not any(k in name.lower() for k in MEME_KEYWORDS):
-            continue
+def analizar_sentimiento_twitter(keyword):
+    try:
+        tweets = twitter_api.search_tweets(q=keyword, count=30, lang="en")
+        scores = [analyzer.polarity_scores(tweet.text)['compound'] for tweet in tweets]
+        if scores:
+            return sum(scores) / len(scores)
+        return 0
+    except Exception as e:
+        print(f"Error en análisis de sentimiento Twitter: {e}")
+        return 0
 
-        # Filtro de liquidez y market cap
-        if market_cap is None or volume is None:
-            continue
-        if not (20_000 <= market_cap <= 10_000_000):
-            continue
-        if volume < 50_000:
-            continue
-        if price > 1:
-            continue
+def obtener_liquidez_dex(token_id):
+    # Mock simple para iniciar
+    return 100000
 
-        # Clasificador de riesgo
-        if volume < 100_000 or market_cap < 50_000:
-            risk_level = "🔴 Alto"
-        elif 100_000 <= volume <= 500_000:
-            risk_level = "🟡 Medio"
-        else:
-            risk_level = "🟢 Bajo"
+def detectar_caida_rapida(precio_actual, precio_max_1h):
+    if precio_max_1h == 0:
+        return False
+    caida = (precio_max_1h - precio_actual) / precio_max_1h * 100
+    return caida >= 15
 
-        oportunidades.append({
-            "name": name,
-            "symbol": symbol,
-            "price": price,
-            "market_cap": market_cap,
-            "volume": volume,
-            "id": id_,
-            "change_1h": change_1h,
-            "change_24h": change_24h,
-            "risk_level": risk_level
-        })
+def riesgo_final(coin, liquidez, sentimiento, caida):
+    vol = coin.get('total_volume', 0)
+    mc = coin.get('market_cap', 0)
 
-    return oportunidades
+    if vol < 100_000 or mc < 50_000 or liquidez < 50_000 or sentimiento < -0.3 or caida:
+        return "Alto"
+    elif vol < 500_000 or mc < 1_000_000 or liquidez < 200_000 or sentimiento < 0:
+        return "Medio"
+    else:
+        return "Bajo"
 
 def main():
-    print("🚀 MemeCoin Tracker con filtro y riesgo iniciado.")
+    print("🚀 MemeCoin Tracker PRO iniciado.")
     while True:
         try:
-            params = {
-                "vs_currency": "usd",
-                "order": "volume_desc",
-                "per_page": 100,
-                "page": 1,
-                "price_change_percentage": "1h,24h"
-            }
-            response = requests.get(COINGECKO_API, params=params, headers=HEADERS)
-            if response.status_code != 200:
-                print(f"Error API CoinGecko: {response.status_code}")
-                time.sleep(60)
-                continue
+            memecoins = obtener_memecoins()
+            for coin in memecoins:
+                price = coin.get("current_price", 0)
+                max_price_1h = price  # CoinGecko no da max 1h; para demo asumimos precio actual
+                liquidez = obtener_liquidez_dex(coin['id'])
+                sentimiento = analizar_sentimiento_twitter(coin['symbol'])
+                caida = detectar_caida_rapida(price, max_price_1h)
+                riesgo = riesgo_final(coin, liquidez, sentimiento, caida)
 
-            data = response.json()
-            oportunidades = filtrar_y_analizar(data)
+                # Filtros básicos para alertar solo oportunidades bajas/medias riesgo
+                if riesgo == "Alto":
+                    continue
 
-            for coin in oportunidades:
-                unique_id = coin["id"]
-                if unique_id not in enviados:
+                if coin['id'] not in enviados:
                     mensaje = (
                         f"🚨 *Nueva memecoin detectada* 🚨\n"
-                        f"📈 *{coin['name']}* ({coin['symbol']})\n"
-                        f"💰 Precio: ${coin['price']:.8f}\n"
-                        f"🏦 Market Cap: ${coin['market_cap']:,}\n"
-                        f"📊 Volumen 24h: ${coin['volume']:,}\n"
-                        f"📉 Cambio 1h: {coin['change_1h']:.2f}% | 24h: {coin['change_24h']:.2f}%\n"
-                        f"⚠️ Nivel de riesgo: {coin['risk_level']}\n"
-                        f"🔗 [Ver en CoinGecko](https://www.coingecko.com/en/coins/{unique_id})"
+                        f"📈 *{coin['name']}* ({coin['symbol'].upper()})\n"
+                        f"💰 Precio: ${price:.8f}\n"
+                        f"🏦 Market Cap: ${coin.get('market_cap',0):,}\n"
+                        f"📊 Volumen 24h: ${coin.get('total_volume',0):,}\n"
+                        f"🔹 Liquidez DEX: ${liquidez}\n"
+                        f"🔹 Sentimiento Twitter: {sentimiento:.2f}\n"
+                        f"⚠️ Caída rápida (rugpull): {'Sí' if caida else 'No'}\n"
+                        f"⚠️ Nivel de riesgo: {riesgo}\n"
+                        f"🔗 [Ver en CoinGecko](https://www.coingecko.com/en/coins/{coin['id']})"
                     )
-                    enviado = enviar_mensaje(mensaje)
+                    enviado = enviar_alerta_telegram(mensaje)
                     if enviado:
-                        print(f"Mensaje enviado: {coin['name']}")
-                        enviados.add(unique_id)
+                        print(f"Mensaje enviado para {coin['name']}")
+                        enviados.add(coin['id'])
                     else:
-                        print(f"Error al enviar mensaje: {coin['name']}")
+                        print(f"Error enviando mensaje para {coin['name']}")
 
-            time.sleep(300)  # Esperar 5 minutos
+            time.sleep(300)
         except Exception as e:
-            print(f"Error inesperado: {e}")
+            print(f"Error principal: {e}")
             time.sleep(60)
 
 if __name__ == "__main__":
