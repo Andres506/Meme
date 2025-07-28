@@ -1,19 +1,16 @@
-# Memecoin Tracker
+# Meme Coin Tracker Bot 💸
 
-Un bot automático 24/7 que:
+Este bot rastrea memecoins en tiempo real usando la API de CoinGecko y envía oportunidades de inversión a Telegram si detecta cambios positivos en el mercado.
 
-- Monitorea memecoins y trash coins desde CoinGecko
-- Detecta oportunidades de compra basadas en momentum
-- Envía alertas de venta si detecta un dump o alto rendimiento
-- Notifica en tiempo real por Telegram
+## ¿Qué hace?
 
-## 🛠 Requisitos
+- Analiza las top 100 memecoins por capitalización.
+- Filtra las que suben más de 2% en la última hora y 5% en 24h.
+- Envía alertas con enlaces directos a CoinGecko.
 
-- Python 3.10+
-- Cuenta en [Render](https://render.com)
-- Cuenta de Telegram y bot creado en @BotFather
+## Cómo usar
 
-## 🔧 Variables de entorno
-
-Configura en Render:
-
+1. Crea un bot en Telegram con @BotFather.
+2. Crea un archivo `.env` con tu token y chat_id.
+3. Sube los archivos a GitHub y conéctalo a Railway.
+4. ¡Recibe alertas automáticas y actúa rápido!
