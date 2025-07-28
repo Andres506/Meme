@@ -1,51 +1,46 @@
 import requests
-import os
+import json
+from datetime import datetime
 
-TOKEN_DETALLE_URL = "https://api.coingecko.com/api/v3/coins/"
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+URL = "https://api.coingecko.com/api/v3/coins/markets"
+ALERTAS_FILE = "alertas.json"
 
-def analizar_token(token_id):
+def obtener_tendencias():
+    params = {
+        "vs_currency": "usd",
+        "order": "volume_desc",
+        "per_page": 100,
+        "page": 1,
+        "price_change_percentage": "1h,24h"
+    }
+    r = requests.get(URL, params=params)
+    return r.json()
+
+def formatear_mensaje(nombre, simbolo, precio, cambio_1h, cambio_24h, volumen, id, señal):
+    return (
+        f"{señal} {nombre} ({simbolo})\n"
+        f"💵 Precio: ${precio:.6f}\n"
+        f"📈 1h: {cambio_1h:.2f}% | 24h: {cambio_24h:.2f}%\n"
+        f"🔊 Volumen 24h: ${volumen:,.0f}\n"
+        f"🔗 https://www.coingecko.com/es/monedas/{id}"
+    )
+
+def ya_alertado(nombre):
     try:
-        url = f"{TOKEN_DETALLE_URL}{token_id}"
-        res = requests.get(url)
-        if res.status_code != 200:
-            return None
-        data = res.json()
+        with open(ALERTAS_FILE, "r") as f:
+            datos = json.load(f)
+    except FileNotFoundError:
+        return False
 
-        nombre = data.get("name")
-        symbol = data.get("symbol")
-        score = data.get("coingecko_score", 0)
-        enlaces = data.get("links", {})
-        homepage = enlaces.get("homepage", [""])[0]
+    return nombre in datos
 
-        # Criterios para alerta
-        if data.get("market_data") and score >= 5:
-            return {
-                "nombre": nombre,
-                "symbol": symbol.upper(),
-                "score": score,
-                "link": f"https://www.coingecko.com/es/monedas/{token_id}",
-                "homepage": homepage
-            }
-    except Exception as e:
-        print("Error al analizar token:", e)
-    return None
-
-def enviar_alerta(info):
+def guardar_alerta(nombre):
     try:
-        mensaje = (
-            f"🚨 *Nueva posible memecoin interesante detectada!*\n\n"
-            f"*Nombre:* {info['nombre']} ({info['symbol']})\n"
-            f"*Score:* {info['score']}\n"
-            f"[Ver en CoinGecko]({info['link']})\n"
-        )
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        data = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": mensaje,
-            "parse_mode": "Markdown"
-        }
-        requests.post(url, data=data)
-    except Exception as e:
-        print("Error al enviar mensaje:", e)
+        with open(ALERTAS_FILE, "r") as f:
+            datos = json.load(f)
+    except FileNotFoundError:
+        datos = []
+
+    datos.append(nombre)
+    with open(ALERTAS_FILE, "w") as f:
+        json.dump(datos, f)
