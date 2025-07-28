@@ -60,27 +60,41 @@ def should_sell(coin, memory):
 
 def track_memecoins():
     memory = {}
+    alertas_enviadas = {}
+    send_telegram_message("🤖 Bot Tracker de Memecoins iniciado 24/7...")
+
     while True:
         coins = get_memecoins()
         for coin in coins:
+            symbol = coin["symbol"]
+
             if should_buy(coin):
-                msg = (
-                    f"🚀 *Oportunidad Detectada*\n"
-                    f"*{coin['name']}* ({coin['symbol'].upper()})\n"
-                    f"Precio: ${coin['current_price']}\n"
-                    f"1h: {coin.get('price_change_percentage_1h_in_currency', 0):.2f}% | "
-                    f"24h: {coin.get('price_change_percentage_24h_in_currency', 0):.2f}%\n"
-                    f"#memecoin #cryptoalert"
-                )
-                send_telegram_message(msg)
+                if not alertas_enviadas.get(f"buy_{symbol}", False):
+                    coin_link = f"https://www.coingecko.com/en/coins/{coin['id']}"
+                    msg = (
+                        f"🚀 *Oportunidad Detectada*\n"
+                        f"*{coin['name']}* ({symbol.upper()})\n"
+                        f"Precio: ${coin['current_price']}\n"
+                        f"1h: {coin.get('price_change_percentage_1h_in_currency', 0):.2f}% | "
+                        f"24h: {coin.get('price_change_percentage_24h_in_currency', 0):.2f}%\n"
+                        f"[Ver en CoinGecko]({coin_link})\n"
+                        f"#memecoin #cryptoalert"
+                    )
+                    send_telegram_message(msg)
+                    alertas_enviadas[f"buy_{symbol}"] = True
+            else:
+                alertas_enviadas[f"buy_{symbol}"] = False
 
             sell_alert = should_sell(coin, memory)
             if sell_alert:
-                send_telegram_message(sell_alert)
+                if alertas_enviadas.get(f"sell_{symbol}", "") != sell_alert:
+                    send_telegram_message(sell_alert)
+                    alertas_enviadas[f"sell_{symbol}"] = sell_alert
+            else:
+                alertas_enviadas[f"sell_{symbol}"] = False
 
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Check completo")
-        time.sleep(300)  # 5 minutos
+        time.sleep(300)
 
 if __name__ == "__main__":
-    send_telegram_message("🤖 Bot Tracker de Memecoins iniciado 24/7...")
     track_memecoins()
