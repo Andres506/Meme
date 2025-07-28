@@ -88,6 +88,17 @@ def riesgo_final(coin, liquidez, sentimiento, caida):
     else:
         return "Bajo"
 
+def recomendar_accion(riesgo, sentimiento, caida):
+    if caida:
+        return "Vender urgente (posible rugpull)"
+    if riesgo == "Alto" or sentimiento < 0:
+        return "Vender"
+    if riesgo == "Medio" and 0 <= sentimiento <= 0.3:
+        return "Mantener"
+    if riesgo == "Bajo" and sentimiento > 0.3:
+        return "Comprar"
+    return "Mantener"
+
 def main():
     print("🚀 MemeCoin Tracker PRO iniciado.")
     while True:
@@ -100,6 +111,7 @@ def main():
                 sentimiento = analizar_sentimiento_twitter(coin['symbol'])
                 caida = detectar_caida_rapida(price, max_price_1h)
                 riesgo = riesgo_final(coin, liquidez, sentimiento, caida)
+                accion = recomendar_accion(riesgo, sentimiento, caida)
 
                 # Filtros básicos para alertar solo oportunidades bajas/medias riesgo
                 if riesgo == "Alto":
@@ -116,6 +128,7 @@ def main():
                         f"🔹 Sentimiento Twitter: {sentimiento:.2f}\n"
                         f"⚠️ Caída rápida (rugpull): {'Sí' if caida else 'No'}\n"
                         f"⚠️ Nivel de riesgo: {riesgo}\n"
+                        f"💡 Recomendación: *{accion}*\n"
                         f"🔗 [Ver en CoinGecko](https://www.coingecko.com/en/coins/{coin['id']})"
                     )
                     enviado = enviar_alerta_telegram(mensaje)
