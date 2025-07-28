@@ -8,8 +8,8 @@ from datetime import datetime
 from telegram import Bot
 
 # Cargar las keys
-TELEGRAM_API_KEY = 'TU_API_KEY_TELEGRAM'
-TELEGRAM_CHAT_ID = 'TU_CHAT_ID_TELEGRAM'
+TELEGRAM_API_KEY = 8351984237:AAF0O8zv0lxtQR-aBYx2-iuGqXfE_T7SdWY
+TELEGRAM_CHAT_ID = 7941357326
 
 bot = Bot(token=TELEGRAM_API_KEY)
 
