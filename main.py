@@ -1,102 +1,95 @@
-# Proyecto: Memecoin Tracker + Alerta de Retiro Inteligente
-# Tecnologías: Python + DexScreener + CoinGecko + Telegram Bot + Render Deploy
-
 import requests
 import time
-import logging
 from datetime import datetime
-from telegram import Bot
+import os
 
-# Cargar las keys
-TELEGRAM_API_KEY = 'TU_API_KEY_TELEGRAM'
-TELEGRAM_CHAT_ID = 'TU_CHAT_ID_TELEGRAM'
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-bot = Bot(token=TELEGRAM_API_KEY)
-
-# Historial para evitar spam
-alerted_tokens = {}
-history = []
-
-# Parámetros para alertas
-DROP_PERCENT_ALERT = 15
-DROP_CAP_ALERT = 20
-SELL_BUY_RATIO_ALERT = 1.5
-
-# Función para enviar mensajes a Telegram
-def send_alert(message):
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-
-# Consulta DexScreener
-def fetch_dexscreener_tokens():
+def send_telegram_message(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
     try:
-        url = "https://api.dexscreener.com/latest/dex/pairs/ethereum"
-        res = requests.get(url)
-        data = res.json()
-        return data.get("pairs", [])
+        requests.post(url, data=payload)
     except Exception as e:
-        logging.error(f"Error en DexScreener: {e}")
+        print("Error al enviar mensaje:", e)
+
+def get_memecoins():
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {
+        "vs_currency": "usd",
+        "order": "market_cap_asc",  # Prioriza monedas pequeñas
+        "per_page": 50,
+        "page": 1,
+        "price_change_percentage": "1h,24h"
+    }
+    try:
+        response = requests.get(url, params=params)
+        return response.json()
+    except Exception as e:
+        print("Error al obtener datos:", e)
         return []
 
-# Consulta CoinGecko
-def fetch_coingecko_token_data(symbol):
-    try:
-        url = f"https://api.coingecko.com/api/v3/coins/{symbol}"
-        res = requests.get(url)
-        return res.json()
-    except:
-        return None
+def should_buy(coin):
+    price = coin["current_price"]
+    change_1h = coin.get("price_change_percentage_1h_in_currency", 0) or 0
+    change_24h = coin.get("price_change_percentage_24h_in_currency", 0) or 0
+    volume = coin["total_volume"]
 
-# Lógica de evaluación
+    # Estrategia pensada por IA
+    if change_1h > 10 and change_24h > 30 and volume > 50000:
+        return True
+    return False
 
-def should_alert(pair):
-    try:
-        # Evita spam
-        if pair['pairAddress'] in alerted_tokens:
-            return False
+def should_sell(coin, memory):
+    symbol = coin["symbol"]
+    price = coin["current_price"]
+    high = memory.get(symbol, {}).get("highest", price)
 
-        price_change = float(pair['priceChange']['m5'])
-        cap_change = float(pair['priceChange']['h1'])
-        buy_tx = pair['txCount']['m5']['buys']
-        sell_tx = pair['txCount']['m5']['sells']
-        ratio = sell_tx / (buy_tx + 1)
+    # Guardar el precio más alto
+    if price > high:
+        memory[symbol] = {"highest": price}
 
-        if price_change <= -DROP_PERCENT_ALERT or cap_change <= -DROP_CAP_ALERT or ratio >= SELL_BUY_RATIO_ALERT:
-            return True
+    percent_drop = ((high - price) / high) * 100 if high > price else 0
 
-        return False
-    except Exception as e:
-        logging.error(f"Error en should_alert: {e}")
-        return False
+    if percent_drop >= 25:
+        return f"🚨 *Posible Dump Detectado:* {symbol.upper()} ha caído un {percent_drop:.2f}% desde su punto más alto (${high:.4f})"
+    if price > high * 0.8:
+        return f"🟢 *Ganancia Alta:* {symbol.upper()} está cerca del +80% de su mejor precio. Considera retirar ganancias."
 
-# Mensaje formateado
+    return None
 
-def format_alert(pair):
-    name = pair['baseToken']['name']
-    symbol = pair['baseToken']['symbol']
-    price = pair['priceUsd']
-    link = f"https://dexscreener.com/ethereum/{pair['pairAddress']}"
-
-    return f"\n🛑 ALERTA DE RETIRO – ${symbol}\n\n💸 Precio: ${price[:7]}\n📉 Movimiento negativo en últimas 2 velas\n🔄 Volumen de ventas alto\n🔗 {link}\n\n(No es consejo financiero)"
-
-# Loop principal
-
-def run_monitor():
+def track_memecoins():
+    memory = {}
     while True:
-        print("⏳ Buscando tokens...")
-        tokens = fetch_dexscreener_tokens()
+        coins = get_memecoins()
+        for coin in coins:
+            symbol = coin["symbol"]
+            name = coin["name"]
+            price = coin["current_price"]
 
-        for pair in tokens[:50]:
-            if should_alert(pair):
-                msg = format_alert(pair)
-                send_alert(msg)
-                alerted_tokens[pair['pairAddress']] = True
-                history.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "token": pair['baseToken']['symbol'],
-                    "reason": "alert"
-                })
-        
-        time.sleep(300)  # Cada 5 minutos
+            if should_buy(coin):
+                message = (
+                    f"🚀 *Oportunidad Detectada*\n"
+                    f"*{name}* ({symbol.upper()})\n"
+                    f"💰 Precio: ${price}\n"
+                    f"📈 1h: {coin.get('price_change_percentage_1h_in_currency', 0):.2f}% | "
+                    f"24h: {coin.get('price_change_percentage_24h_in_currency', 0):.2f}%\n"
+                    f"#memecoin #cryptoalert"
+                )
+                send_telegram_message(message)
+
+            sell_alert = should_sell(coin, memory)
+            if sell_alert:
+                send_telegram_message(sell_alert)
+
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Check completo")
+        time.sleep(300)  # cada 5 minutos
 
 if __name__ == "__main__":
-    run_monitor()
+    send_telegram_message("🤖 Tracker de memecoins iniciado 24/7...")
+    track_memecoins()
