@@ -1,3 +1,4 @@
-python-telegram-bot==13.15
+requests==2.31.0
 python-dotenv==1.0.0
-requests
+tweepy==4.15.0
+vaderSentiment==3.3.2
