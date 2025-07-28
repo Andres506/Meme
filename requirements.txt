@@ -13,3 +13,4 @@ lxml
 openai
 praw
 vaderSentiment
+sklearn
