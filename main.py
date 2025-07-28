@@ -56,6 +56,20 @@ def obtener_memecoins():
             memecoins.append(coin)
     return memecoins
 
+def obtener_top10_cripto():
+    params = {
+        "vs_currency": "usd",
+        "order": "market_cap_desc",
+        "per_page": 10,
+        "page": 1,
+        "price_change_percentage": "1h,24h"
+    }
+    r = requests.get(COINGECKO_API, params=params)
+    if r.status_code != 200:
+        print(f"Error CoinGecko API top10: {r.status_code}")
+        return []
+    return r.json()
+
 def analizar_sentimiento_twitter(keyword):
     try:
         tweets = twitter_api.search_tweets(q=keyword, count=30, lang="en")
@@ -100,26 +114,28 @@ def recomendar_accion(riesgo, sentimiento, caida):
     return "Mantener"
 
 def main():
-    print("🚀 MemeCoin Tracker PRO iniciado.")
+    print("🚀 MemeCoin + Top10 Crypto Tracker PRO iniciado.")
     while True:
         try:
             memecoins = obtener_memecoins()
-            for coin in memecoins:
+            top10 = obtener_top10_cripto()
+            todas_coins = {coin['id']: coin for coin in memecoins + top10}
+
+            for coin in todas_coins.values():
                 price = coin.get("current_price", 0)
-                max_price_1h = price  # CoinGecko no da max 1h; para demo asumimos precio actual
+                max_price_1h = price  # Por demo, asumimos precio actual
                 liquidez = obtener_liquidez_dex(coin['id'])
                 sentimiento = analizar_sentimiento_twitter(coin['symbol'])
                 caida = detectar_caida_rapida(price, max_price_1h)
                 riesgo = riesgo_final(coin, liquidez, sentimiento, caida)
                 accion = recomendar_accion(riesgo, sentimiento, caida)
 
-                # Filtros básicos para alertar solo oportunidades bajas/medias riesgo
                 if riesgo == "Alto":
                     continue
 
                 if coin['id'] not in enviados:
                     mensaje = (
-                        f"🚨 *Nueva memecoin detectada* 🚨\n"
+                        f"🚨 *Nueva criptomoneda detectada* 🚨\n"
                         f"📈 *{coin['name']}* ({coin['symbol'].upper()})\n"
                         f"💰 Precio: ${price:.8f}\n"
                         f"🏦 Market Cap: ${coin.get('market_cap',0):,}\n"
