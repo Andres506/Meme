@@ -12,3 +12,4 @@ beautifulsoup4
 lxml
 openai
 praw
+vaderSentiment
