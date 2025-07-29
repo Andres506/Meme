@@ -8,6 +8,7 @@ import pandas as pd
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from dotenv import load_dotenv
 from sklearn.ensemble import RandomForestClassifier
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -195,7 +196,6 @@ def calcular_edad_contrato(fecha_str):
     # Suponiendo fecha_str tipo "2021-06-15"
     if not fecha_str:
         return 0
-    from datetime import datetime
     try:
         fecha = datetime.strptime(fecha_str, "%Y-%m-%d")
         hoy = datetime.utcnow()
@@ -208,10 +208,30 @@ def predecir_potencial(modelo, datos):
     pred = modelo.predict(df_pred)
     return pred[0] == 1
 
+def enviar_reporte_diario():
+    try:
+        top_memecoins = sorted(obtener_memecoins(), key=lambda x: x.get('price_change_percentage_24h', 0), reverse=True)[:10]
+        top_criptos = obtener_top10_cripto()
+
+        mensaje = "*📊 Reporte Diario de Criptomonedas (6:10 PM)*\n\n"
+        mensaje += "*🐶 Top 10 Memecoins del Día:*\n"
+        for i, coin in enumerate(top_memecoins, 1):
+            mensaje += f"{i}. {coin['name']} ({coin['symbol'].upper()}) - ${coin['current_price']:.6f} ({coin.get('price_change_percentage_24h', 0):+.2f}%)\n"
+
+        mensaje += "\n*💎 Top Criptos por Market Cap:*\n"
+        for i, coin in enumerate(top_criptos, 1):
+            mensaje += f"{i}. {coin['name']} ({coin['symbol'].upper()}) - ${coin['current_price']:.2f} ({coin.get('price_change_percentage_24h', 0):+.2f}%)\n"
+
+        enviar_alerta_telegram(mensaje)
+        print("✅ Reporte diario enviado.")
+    except Exception as e:
+        print(f"❌ Error al enviar reporte diario: {e}")
+
 def main():
     print("🚀 Tracker avanzado MemeCoin + Top10 + ML + Liquidez + Sentimiento social iniciado.")
     compras = cargar_compras()
     global enviados
+    reporte_enviado = False  # Control para enviar solo una vez al día
     while True:
         try:
             memecoins = obtener_memecoins()
@@ -273,7 +293,17 @@ def main():
                                 compras[coin['id']] = {"precio_compra": price}
                                 guardar_compras(compras)
 
-            time.sleep(300)  # Esperar 5 minutos
+            # Envío diario a las 18:10 (UTC-5 Colombia/México)
+            ahora = datetime.utcnow() - timedelta(hours=6)
+            if ahora.hour == 18 and ahora.minute == 10:
+                if not reporte_enviado:
+                    enviar_reporte_diario()
+                    reporte_enviado = True
+            else:
+                reporte_enviado = False  # Reset para el próximo día
+
+            time.sleep(60)  # Dormir 1 minuto para control horario y no saturar
+
         except Exception as e:
             print(f"Error en loop principal: {e}")
             time.sleep(60)
