@@ -5,3 +5,4 @@ vaderSentiment
 python-dotenv
 scikit-learn
 requests
+pytz
