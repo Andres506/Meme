@@ -185,7 +185,7 @@ def main():
             fecha_hoy = ahora.strftime("%Y-%m-%d")
 
             # Preparar mensaje resumen diario a las 18:10 (6:10pm)
-            if ahora.hour == 18 and ahora.minute == 30:
+            if ahora.hour == 18 and ahora.minute == 40:
                 mensaje_resumen = f"📊 *Resumen diario de criptomonedas - {fecha_hoy}*\n\n"
 
                 # Resumen Movimientos Clave
